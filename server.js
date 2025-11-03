@@ -20,7 +20,7 @@ const {
 } = process.env;
 
 if (!PRIVATE_KEY || !CLIENT_EMAIL || !PROJECT_ID) {
-  throw new Error("Missing Firebase environment variables. Check your .env!");
+  throw new Error("Missing Firebase environment variables.");
 }
 
 admin.initializeApp({
@@ -45,75 +45,95 @@ const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
-const limiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 15,
-});
-app.use(limiter);
+// --- RATE LIMIT ---
+app.use(
+  rateLimit({
+    windowMs: 60 * 1000,
+    max: 20,
+  })
+);
 
+// --- FIND PROFILE BY USERNAME ---
 app.get("/api/findProfile", async (req, res) => {
   try {
-    const username = req.query.username;
-    if (!username) return res.status(400).json({ error: "Username is required" });
-    const snapshot = await db.collection("profiles").where("username", "==", username).limit(1).get();
-    if (snapshot.empty) return res.status(404).json({ message: "User not found" });
-    const doc = snapshot.docs[0];
-    const data = doc.data();
-    if (!Array.isArray(data.links)) data.links = [];
-    res.json(data);
-  } catch (err) {
-    console.error("findProfile error:", err);
-    res.status(500).json({ error: "Error fetching profile" });
-  }
-});
-app.get("/api/getProfileByUsername/:username", async (req, res) => {
-  try {
-    const { username } = req.params;
-    const snapshot = await db.collection("profiles").where("username", "==", username).limit(1).get();
-    if (snapshot.empty) return res.status(404).json({ message: "User not found" });
-    const doc = snapshot.docs[0];
-    const data = doc.data();
-    if (!Array.isArray(data.links)) data.links = [];
-    res.json(data);
-  } catch (err) {
-    console.error("getProfileByUsername error:", err);
-    res.status(500).json({ error: "Error fetching profile" });
-  }
-});
+    const { username } = req.query;
+    if (!username) return res.status(400).json({ error: "Username required" });
+    const snapshot = await db
+      .collection("profiles")
+      .where("username", "==", username)
+      .limit(1)
+      .get();
 
-app.get("/api/getProfile/:username", async (req, res) => {
-  const { username } = req.params;
-  try {
-    const doc = await db.collection("profiles").doc(username).get();
-    if (!doc.exists) return res.status(404).json({ message: "User not found" });
-    const data = doc.data();
-    if (!Array.isArray(data.links)) data.links = [];
-    res.json(data);
+    if (snapshot.empty)
+      return res.status(404).json({ message: "User not found" });
+
+    const doc = snapshot.docs[0];
+    res.json(doc.data());
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Error fetching profile" });
   }
 });
 
+// --- GET PROFILE BY UID ---
+app.get("/api/getProfile/:uid", async (req, res) => {
+  try {
+    const { uid } = req.params;
+    const doc = await db.collection("profiles").doc(uid).get();
+    if (!doc.exists) return res.status(404).json({ message: "User not found" });
+    res.json(doc.data());
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Error fetching profile" });
+  }
+});
+
+// --- SAVE OR UPDATE PROFILE ---
 app.post("/api/saveProfile", async (req, res) => {
   try {
-    const { uid, username, bio, links, pfpUrl, background, cursor, glow, trail } = req.body;
+    const {
+      uid,
+      username,
+      displayName,
+      bio,
+      links,
+      pfpUrl,
+      bannerUrl,
+      background,
+      cursor,
+      glow,
+      trail,
+      font,
+      youtube,
+    } = req.body;
+
     if (!uid) return res.status(400).json({ error: "UID is required" });
-    const linksArray = Array.isArray(links) ? links : typeof links === "string" ? links.split(",").map((l) => l.trim()) : [];
+
+    const linksArray = Array.isArray(links)
+      ? links
+      : typeof links === "string"
+      ? links.split(",").map((l) => l.trim())
+      : [];
+
     await db.collection("profiles").doc(uid).set(
       {
         username,
+        displayName: displayName || username,
         bio: bio || "",
         links: linksArray,
         pfpUrl: pfpUrl || null,
+        bannerUrl: bannerUrl || null,
         background: background || "default",
         cursor: cursor || "default",
         glow: !!glow,
         trail: !!trail,
+        font: font || "Arial",
+        youtube: youtube || "",
         updatedAt: new Date(),
       },
       { merge: true }
     );
+
     res.json({ message: "Profile saved successfully!" });
   } catch (error) {
     console.error(error);
@@ -121,15 +141,16 @@ app.post("/api/saveProfile", async (req, res) => {
   }
 });
 
+// --- REGISTER USER ---
 app.post("/auth/registerUser", async (req, res) => {
   const { email, password } = req.body;
-  if (!email || !password) return res.status(400).json({ error: "Email and password are required." });
+  if (!email || !password)
+    return res.status(400).json({ error: "Email and password required" });
+
   try {
     const userRecord = await admin.auth().createUser({ email, password });
-    const verificationLink = await admin.auth().generateEmailVerificationLink(email);
     res.status(201).json({
-      message: "Account created successfully. Please verify your email.",
-      verificationLink,
+      message: "Account created successfully.",
       uid: userRecord.uid,
     });
   } catch (error) {
@@ -138,9 +159,11 @@ app.post("/auth/registerUser", async (req, res) => {
   }
 });
 
+// --- LOGIN USER ---
 app.post("/auth/loginUser", async (req, res) => {
   const { email } = req.body;
-  if (!email) return res.status(400).json({ error: "Email and password are required." });
+  if (!email) return res.status(400).json({ error: "Email required" });
+
   try {
     const user = await admin.auth().getUserByEmail(email);
     res.status(200).json({
@@ -148,16 +171,14 @@ app.post("/auth/loginUser", async (req, res) => {
       uid: user.uid,
       email: user.email,
     });
-  } catch (error) {
-    console.error(error);
-    res.status(400).json({ message: "Invalid credentials or user not found." });
+  } catch {
+    res.status(400).json({ message: "Invalid credentials" });
   }
 });
 
 app.get("/", (req, res) => {
-  res.send("🚀 Vanity API running with Firestore support!");
+  res.send("🚀 Vanity API running");
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`✅ Vanity server running on port ${PORT}`));
-
+app.listen(PORT, () => console.log(`✅ Server running on ${PORT}`));
