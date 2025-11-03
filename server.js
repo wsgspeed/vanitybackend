@@ -54,6 +54,26 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
+app.get("/api/getProfileByUsername/:username", async (req, res) => {
+  try {
+    const username = req.params.username;
+    const profilesRef = db.collection("profiles");
+    const snapshot = await profilesRef
+      .where("username", "==", username)
+      .limit(1)
+      .get();
+
+    if (snapshot.empty)
+      return res.status(404).json({ message: "User not found" });
+
+    const doc = snapshot.docs[0];
+    res.json(doc.data());
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Error fetching profile" });
+  }
+});
+
 // Register user endpoint
 app.post("/auth/registerUser", async (req, res) => {
   const { email, password } = req.body;
@@ -156,4 +176,5 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () =>
   console.log(`✅ Vanity server running on port ${PORT}`)
 );
+
 
