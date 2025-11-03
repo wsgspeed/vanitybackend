@@ -4,9 +4,8 @@ const bodyParser = require("body-parser");
 const cors = require("cors");
 const rateLimit = require("express-rate-limit");
 const admin = require("firebase-admin");
-require("dotenv").config(); // load .env variables
+require("dotenv").config();
 
-// Initialize Firebase Admin from environment variables
 const {
   TYPE,
   PROJECT_ID,
@@ -30,7 +29,7 @@ admin.initializeApp({
     type: TYPE,
     project_id: PROJECT_ID,
     private_key_id: PRIVATE_KEY_ID,
-    private_key: PRIVATE_KEY.replace(/\\n/g, "\n"), // fix escaped newlines
+    private_key: PRIVATE_KEY.replace(/\\n/g, "\n"),
     client_email: CLIENT_EMAIL,
     client_id: CLIENT_ID,
     auth_uri: AUTH_URI,
@@ -47,18 +46,22 @@ const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
-// Rate limiter
+// 🧠 Rate limiter
 const limiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
+  windowMs: 60 * 1000,
   max: 15,
 });
 app.use(limiter);
 
-app.get("/api/getProfileByUsername/:username", async (req, res) => {
+// ✅ Find profile by username (for /u/:username routes)
+app.get("/api/findProfile", async (req, res) => {
   try {
-    const username = req.params.username;
-    const profilesRef = db.collection("profiles");
-    const snapshot = await profilesRef
+    const username = req.query.username;
+    if (!username)
+      return res.status(400).json({ error: "Username is required" });
+
+    const snapshot = await db
+      .collection("profiles")
       .where("username", "==", username)
       .limit(1)
       .get();
@@ -67,88 +70,19 @@ app.get("/api/getProfileByUsername/:username", async (req, res) => {
       return res.status(404).json({ message: "User not found" });
 
     const doc = snapshot.docs[0];
-    res.json(doc.data());
+    const data = doc.data();
+
+    // Ensure links always array
+    if (!Array.isArray(data.links)) data.links = [];
+
+    res.json(data);
   } catch (err) {
-    console.error(err);
+    console.error("findProfile error:", err);
     res.status(500).json({ error: "Error fetching profile" });
   }
 });
 
-// Register user endpoint
-app.post("/auth/registerUser", async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password)
-    return res.status(400).json({ error: "Email and password are required." });
-
-  try {
-    const userRecord = await admin.auth().createUser({ email, password });
-    const verificationLink = await admin.auth().generateEmailVerificationLink(email);
-
-    res.status(201).json({
-      message: "Account created successfully. Please verify your email.",
-      verificationLink,
-      uid: userRecord.uid,
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Login user endpoint
-app.post("/auth/loginUser", async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password)
-    return res.status(400).json({ error: "Email and password are required." });
-
-  try {
-    const user = await admin.auth().getUserByEmail(email);
-    res.status(200).json({
-      message: "Login successful!",
-      uid: user.uid,
-      email: user.email,
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(400).json({ message: "Invalid credentials or user not found." });
-  }
-});
-
-// Save profile endpoint
-// server/index.js (or wherever your saveProfile endpoint is)
-app.post("/api/saveProfile", async (req, res) => {
-  try {
-    const { uid, username, bio, links, pfpUrl } = req.body;
-
-    if (!uid) return res.status(400).json({ error: "UID is required" });
-
-    // Ensure links is always an array
-    const linksArray = Array.isArray(links)
-      ? links
-      : typeof links === "string"
-      ? links.split(",").map((l) => l.trim())
-      : [];
-
-    await db.collection("profiles").doc(uid).set(
-      {
-        username,
-        bio: bio || "",
-        links: linksArray,
-        pfpUrl: pfpUrl || null,
-        updatedAt: new Date(),
-      },
-      { merge: true } // merge ensures updates overwrite, not create new docs
-    );
-
-    res.json({ message: "Profile saved successfully!" });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Error saving profile" });
-  }
-});
-
-
-// Get profile endpoint
+// ✅ Get profile by Firestore document ID (uid)
 app.get("/api/getProfile/:username", async (req, res) => {
   const { username } = req.params;
   try {
@@ -166,15 +100,87 @@ app.get("/api/getProfile/:username", async (req, res) => {
   }
 });
 
-// Root endpoint
+// ✅ Save or update profile
+app.post("/api/saveProfile", async (req, res) => {
+  try {
+    const { uid, username, bio, links, pfpUrl, background, cursor, glow, trail } = req.body;
+
+    if (!uid) return res.status(400).json({ error: "UID is required" });
+
+    const linksArray = Array.isArray(links)
+      ? links
+      : typeof links === "string"
+      ? links.split(",").map((l) => l.trim())
+      : [];
+
+    await db.collection("profiles").doc(uid).set(
+      {
+        username,
+        bio: bio || "",
+        links: linksArray,
+        pfpUrl: pfpUrl || null,
+        background: background || "default",
+        cursor: cursor || "default",
+        glow: !!glow,
+        trail: !!trail,
+        updatedAt: new Date(),
+      },
+      { merge: true }
+    );
+
+    res.json({ message: "Profile saved successfully!" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Error saving profile" });
+  }
+});
+
+// ✅ Register user
+app.post("/auth/registerUser", async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password)
+    return res.status(400).json({ error: "Email and password are required." });
+
+  try {
+    const userRecord = await admin.auth().createUser({ email, password });
+    const verificationLink = await admin
+      .auth()
+      .generateEmailVerificationLink(email);
+
+    res.status(201).json({
+      message: "Account created successfully. Please verify your email.",
+      verificationLink,
+      uid: userRecord.uid,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ✅ Login user
+app.post("/auth/loginUser", async (req, res) => {
+  const { email } = req.body;
+  if (!email)
+    return res.status(400).json({ error: "Email and password are required." });
+
+  try {
+    const user = await admin.auth().getUserByEmail(email);
+    res.status(200).json({
+      message: "Login successful!",
+      uid: user.uid,
+      email: user.email,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(400).json({ message: "Invalid credentials or user not found." });
+  }
+});
+
+// ✅ Root endpoint
 app.get("/", (req, res) => {
   res.send("🚀 Vanity API running with Firestore support!");
 });
 
-// Start server
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () =>
-  console.log(`✅ Vanity server running on port ${PORT}`)
-);
-
-
+app.listen(PORT, () => console.log(`✅ Vanity server running on port ${PORT}`));
