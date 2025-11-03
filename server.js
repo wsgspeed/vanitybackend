@@ -66,6 +66,20 @@ app.get("/api/findProfile", async (req, res) => {
     res.status(500).json({ error: "Error fetching profile" });
   }
 });
+app.get("/api/getProfileByUsername/:username", async (req, res) => {
+  try {
+    const { username } = req.params;
+    const snapshot = await db.collection("profiles").where("username", "==", username).limit(1).get();
+    if (snapshot.empty) return res.status(404).json({ message: "User not found" });
+    const doc = snapshot.docs[0];
+    const data = doc.data();
+    if (!Array.isArray(data.links)) data.links = [];
+    res.json(data);
+  } catch (err) {
+    console.error("getProfileByUsername error:", err);
+    res.status(500).json({ error: "Error fetching profile" });
+  }
+});
 
 app.get("/api/getProfile/:username", async (req, res) => {
   const { username } = req.params;
@@ -146,3 +160,4 @@ app.get("/", (req, res) => {
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`✅ Vanity server running on port ${PORT}`));
+
