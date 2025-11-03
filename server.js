@@ -103,7 +103,10 @@ app.get("/api/getProfile/:username", async (req, res) => {
 // ✅ Save or update profile
 app.post("/api/saveProfile", async (req, res) => {
   try {
-    const { uid, username, bio, links, pfpUrl, background, cursor, glow, trail } = req.body;
+    const {
+      uid, username, bio, links, pfpUrl, bannerUrl, backgroundType, backgroundValue, font, fontColor,
+      songEmbed, autoplaySong, cursor, trailEffect, trailColor, hoverEffect, layout, sections
+    } = req.body;
 
     if (!uid) return res.status(400).json({ error: "UID is required" });
 
@@ -119,10 +122,19 @@ app.post("/api/saveProfile", async (req, res) => {
         bio: bio || "",
         links: linksArray,
         pfpUrl: pfpUrl || null,
-        background: background || "default",
+        bannerUrl: bannerUrl || null,
+        backgroundType: backgroundType || "default",
+        backgroundValue: backgroundValue || "default",
+        font: font || "default",
+        fontColor: fontColor || "default",
+        songEmbed: songEmbed || null,
+        autoplaySong: !!autoplaySong,
         cursor: cursor || "default",
-        glow: !!glow,
-        trail: !!trail,
+        trailEffect: !!trailEffect,
+        trailColor: trailColor || "default",
+        hoverEffect: hoverEffect || "default",
+        layout: layout || "default",
+        sections: sections || [],
         updatedAt: new Date(),
       },
       { merge: true }
