@@ -1,4 +1,3 @@
-// server/index.js
 const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require("cors");
@@ -46,35 +45,21 @@ const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
-// 🧠 Rate limiter
 const limiter = rateLimit({
   windowMs: 60 * 1000,
   max: 15,
 });
 app.use(limiter);
 
-// ✅ Find profile by username (for /u/:username routes)
 app.get("/api/findProfile", async (req, res) => {
   try {
     const username = req.query.username;
-    if (!username)
-      return res.status(400).json({ error: "Username is required" });
-
-    const snapshot = await db
-      .collection("profiles")
-      .where("username", "==", username)
-      .limit(1)
-      .get();
-
-    if (snapshot.empty)
-      return res.status(404).json({ message: "User not found" });
-
+    if (!username) return res.status(400).json({ error: "Username is required" });
+    const snapshot = await db.collection("profiles").where("username", "==", username).limit(1).get();
+    if (snapshot.empty) return res.status(404).json({ message: "User not found" });
     const doc = snapshot.docs[0];
     const data = doc.data();
-
-    // Ensure links always array
     if (!Array.isArray(data.links)) data.links = [];
-
     res.json(data);
   } catch (err) {
     console.error("findProfile error:", err);
@@ -82,17 +67,13 @@ app.get("/api/findProfile", async (req, res) => {
   }
 });
 
-// ✅ Get profile by Firestore document ID (uid)
 app.get("/api/getProfile/:username", async (req, res) => {
   const { username } = req.params;
   try {
     const doc = await db.collection("profiles").doc(username).get();
-    if (!doc.exists)
-      return res.status(404).json({ message: "User not found" });
-
+    if (!doc.exists) return res.status(404).json({ message: "User not found" });
     const data = doc.data();
     if (!Array.isArray(data.links)) data.links = [];
-
     res.json(data);
   } catch (err) {
     console.error(err);
@@ -100,46 +81,25 @@ app.get("/api/getProfile/:username", async (req, res) => {
   }
 });
 
-// ✅ Save or update profile
 app.post("/api/saveProfile", async (req, res) => {
   try {
-    const {
-      uid, username, bio, links, pfpUrl, bannerUrl, backgroundType, backgroundValue, font, fontColor,
-      songEmbed, autoplaySong, cursor, trailEffect, trailColor, hoverEffect, layout, sections
-    } = req.body;
-
+    const { uid, username, bio, links, pfpUrl, background, cursor, glow, trail } = req.body;
     if (!uid) return res.status(400).json({ error: "UID is required" });
-
-    const linksArray = Array.isArray(links)
-      ? links
-      : typeof links === "string"
-      ? links.split(",").map((l) => l.trim())
-      : [];
-
+    const linksArray = Array.isArray(links) ? links : typeof links === "string" ? links.split(",").map((l) => l.trim()) : [];
     await db.collection("profiles").doc(uid).set(
       {
         username,
         bio: bio || "",
         links: linksArray,
         pfpUrl: pfpUrl || null,
-        bannerUrl: bannerUrl || null,
-        backgroundType: backgroundType || "default",
-        backgroundValue: backgroundValue || "default",
-        font: font || "default",
-        fontColor: fontColor || "default",
-        songEmbed: songEmbed || null,
-        autoplaySong: !!autoplaySong,
+        background: background || "default",
         cursor: cursor || "default",
-        trailEffect: !!trailEffect,
-        trailColor: trailColor || "default",
-        hoverEffect: hoverEffect || "default",
-        layout: layout || "default",
-        sections: sections || [],
+        glow: !!glow,
+        trail: !!trail,
         updatedAt: new Date(),
       },
       { merge: true }
     );
-
     res.json({ message: "Profile saved successfully!" });
   } catch (error) {
     console.error(error);
@@ -147,18 +107,12 @@ app.post("/api/saveProfile", async (req, res) => {
   }
 });
 
-// ✅ Register user
 app.post("/auth/registerUser", async (req, res) => {
   const { email, password } = req.body;
-  if (!email || !password)
-    return res.status(400).json({ error: "Email and password are required." });
-
+  if (!email || !password) return res.status(400).json({ error: "Email and password are required." });
   try {
     const userRecord = await admin.auth().createUser({ email, password });
-    const verificationLink = await admin
-      .auth()
-      .generateEmailVerificationLink(email);
-
+    const verificationLink = await admin.auth().generateEmailVerificationLink(email);
     res.status(201).json({
       message: "Account created successfully. Please verify your email.",
       verificationLink,
@@ -170,12 +124,9 @@ app.post("/auth/registerUser", async (req, res) => {
   }
 });
 
-// ✅ Login user
 app.post("/auth/loginUser", async (req, res) => {
   const { email } = req.body;
-  if (!email)
-    return res.status(400).json({ error: "Email and password are required." });
-
+  if (!email) return res.status(400).json({ error: "Email and password are required." });
   try {
     const user = await admin.auth().getUserByEmail(email);
     res.status(200).json({
@@ -189,7 +140,6 @@ app.post("/auth/loginUser", async (req, res) => {
   }
 });
 
-// ✅ Root endpoint
 app.get("/", (req, res) => {
   res.send("🚀 Vanity API running with Firestore support!");
 });
