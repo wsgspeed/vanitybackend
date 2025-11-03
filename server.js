@@ -95,16 +95,21 @@ app.post("/auth/loginUser", async (req, res) => {
 });
 
 // Save profile endpoint
+// server/index.js (or wherever your saveProfile endpoint is)
 app.post("/api/saveProfile", async (req, res) => {
   try {
-    const { username, bio, links, pfpUrl } = req.body;
+    const { uid, username, bio, links, pfpUrl } = req.body;
+
+    if (!uid) return res.status(400).json({ error: "UID is required" });
+
+    // Ensure links is always an array
     const linksArray = Array.isArray(links)
       ? links
       : typeof links === "string"
       ? links.split(",").map((l) => l.trim())
       : [];
 
-    await db.collection("profiles").doc(username).set(
+    await db.collection("profiles").doc(uid).set(
       {
         username,
         bio: bio || "",
@@ -112,7 +117,7 @@ app.post("/api/saveProfile", async (req, res) => {
         pfpUrl: pfpUrl || null,
         updatedAt: new Date(),
       },
-      { merge: true }
+      { merge: true } // merge ensures updates overwrite, not create new docs
     );
 
     res.json({ message: "Profile saved successfully!" });
@@ -121,6 +126,7 @@ app.post("/api/saveProfile", async (req, res) => {
     res.status(500).json({ error: "Error saving profile" });
   }
 });
+
 
 // Get profile endpoint
 app.get("/api/getProfile/:username", async (req, res) => {
@@ -150,3 +156,4 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () =>
   console.log(`✅ Vanity server running on port ${PORT}`)
 );
+
